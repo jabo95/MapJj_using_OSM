@@ -12,6 +12,11 @@ void Widget::paintEvent(QPaintEvent *event)  {
     QPainter painter(this);
     painter.setRenderHint(QPainter::Antialiasing);
 
+    // Apply the scaling and panning for zooming and dragging
+    painter.translate(offset);
+    painter.scale(scaleFactor, scaleFactor);
+
+
     for (const OSMNode &node : nodes) {
         QPointF point = latLonToXY(node.lat, node.lon);
         drawNode(painter, point, node);
@@ -85,11 +90,60 @@ QPointF Widget::latLonToXY(double lat, double lon) {
 void Widget::drawNode(QPainter &painter, const QPointF &point, const OSMNode &node) {
     painter.setPen(Qt::black);
     painter.setBrush(Qt::red);
-    painter.drawEllipse(point, 5, 5);  // Draw the node as a small circle
+    painter.drawEllipse(point, 5/scaleFactor, 5/scaleFactor);  // Draw the node as a small circle
 
     // Optionally display information like type (e.g., tram stop, etc.)
     if (!node.type.isEmpty()) {
         painter.setPen(Qt::blue);
         painter.drawText(point + QPointF(10, 10), node.type);
+    }
+}
+
+
+// Handle the wheel event for zooming
+void Widget::wheelEvent(QWheelEvent* event)  {
+    const double zoomInFactor = 1.1;
+    const double zoomOutFactor = 1.0 / zoomInFactor;
+
+    // Zoom in or out depending on the direction of the wheel event
+    if (event->angleDelta().y() > 0) {
+        scaleFactor *= zoomInFactor;  // Zoom in
+    } else {
+        scaleFactor *= zoomOutFactor; // Zoom out
+    }
+
+    // Clamp the scale factor to avoid excessive zoom in or out
+    scaleFactor = std::max(0.2, std::min(scaleFactor, 5.0));  // Restrict between 0.2x and 5x zoom
+
+    // Trigger a repaint of the widget
+    update();
+}
+
+// Handle mouse press event to start dragging
+void Widget::mousePressEvent(QMouseEvent* event)  {
+    if (event->button() == Qt::LeftButton) {
+        lastMousePos = event->pos(); // Capture the mouse position when the button is pressed
+    }
+}
+
+// Handle mouse move event to drag the map
+void Widget::mouseMoveEvent(QMouseEvent* event)  {
+    if (event->buttons() & Qt::LeftButton) {
+        // Calculate the mouse movement
+        QPoint delta = event->pos() - lastMousePos;
+        lastMousePos = event->pos(); // Update the last mouse position
+
+        // Adjust the offset by the delta, scaled by the current zoom level
+        offset += delta;
+
+        // Trigger a repaint
+        update();
+    }
+}
+
+// Handle mouse release event to stop dragging
+void Widget::mouseReleaseEvent(QMouseEvent* event)  {
+    if (event->button() == Qt::LeftButton) {
+        lastMousePos = QPoint(); // Reset the mouse position
     }
 }
