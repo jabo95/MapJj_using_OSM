@@ -16,7 +16,9 @@ find_package(Qt5 COMPONENTS
 
 add_executable(usingOSM main.cpp
         Widget.cpp
-        Widget.h)
+        Widget.h
+        OSMWay.cpp
+        OSMWay.h)
 target_link_libraries(usingOSM
         Qt5::Core
         Qt5::Gui
