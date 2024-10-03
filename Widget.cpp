@@ -3,6 +3,8 @@
 //
 
 #include "Widget.h"
+#include "OSMWay.h"
+
 Widget::Widget(const QString& fileName,QWidget *parent ) : QWidget(parent) {
     parseOSMFile(fileName);
     findBounds();  // Find min/max lat/lon for scaling
@@ -16,12 +18,30 @@ void Widget::paintEvent(QPaintEvent *event)  {
     painter.translate(offset);
     painter.scale(scaleFactor, scaleFactor);
 
-
+    // Draw nodes
     for (const OSMNode &node : nodes) {
         QPointF point = latLonToXY(node.lat, node.lon);
-        drawNode(painter, point, node);
+        //drawNode(painter, point, node);
+    }
+
+    // Draw ways
+    for (const OSMWay &way : ways) {
+        QVector<QPointF> wayPoints;
+
+        // Convert node references to QPointF for drawing
+        for (const QString &ref : way.nodeRefs) {
+            const OSMNode *node = findNodeById(ref);  // Assume a function to find node by ID
+            if (node) {
+                QPointF point = latLonToXY(node->lat, node->lon);
+                wayPoints.append(point);
+            }
+        }
+
+        // Draw the way with the points
+        drawWay(painter, wayPoints, way);
     }
 }
+
 
 
 void Widget::parseOSMFile(const QString &fileName) {
@@ -49,10 +69,41 @@ void Widget::parseOSMFile(const QString &fileName) {
                     QString key = xml.attributes().value("k").toString();
                     QString value = xml.attributes().value("v").toString();
                     // You can store the tags in a more sophisticated way
-                    type = "";//key + "=" + value;
+                    type = ""; // key + "=" + value;
                 }
             }
             nodes.append(OSMNode(id, lat, lon, type));
+        } else if (xml.isStartElement() && xml.name() == "way") {
+            // Parse way attributes
+            QString wayId = xml.attributes().value("id").toString();
+            bool visible = xml.attributes().value("visible").toString() == "true";
+            QString version = xml.attributes().value("version").toString();
+            QString timestamp = xml.attributes().value("timestamp").toString();
+            QString user = xml.attributes().value("user").toString();
+            QString uid = xml.attributes().value("uid").toString();
+
+            QVector<QString> nodeRefs;  // Store references to nodes
+            QMap<QString, QString> tags; // Store tags
+
+            // Parse inner elements (nd and tag)
+            while (!(xml.isEndElement() && xml.name() == "way")) {
+                xml.readNext();
+                if (xml.isStartElement()) {
+                    if (xml.name() == "nd") {
+                        QString ref = xml.attributes().value("ref").toString();
+                        nodeRefs.append(ref);  // Add node reference
+                    } else if (xml.name() == "tag") {
+                        QString key = xml.attributes().value("k").toString();
+                        QString value = xml.attributes().value("v").toString();
+                        tags.insert(key, value);  // Add key-value pair to tags
+                    }
+                }
+            }
+
+            // Now you can create your OSMWay object and store it
+            OSMWay way(wayId, visible, version, timestamp, user, uid, nodeRefs, tags);
+            //ways.append(way);  // Assuming you have a 'ways' vector
+            ways.push_back(way);
         }
     }
 
@@ -62,6 +113,7 @@ void Widget::parseOSMFile(const QString &fileName) {
 
     file.close();
 }
+
 
 void Widget::findBounds() {
     if (nodes.isEmpty()) return;
@@ -99,6 +151,50 @@ void Widget::drawNode(QPainter &painter, const QPointF &point, const OSMNode &no
     }
 }
 
+void Widget::drawWay(QPainter &painter, const QVector<QPointF> &points, const OSMWay &way) {
+    if (points.isEmpty()) {
+        return; // No points to draw
+    }
+
+    // Check if the way is closed by comparing the first and last node reference IDs
+    bool isClosed = way.nodeRefs.first() == way.nodeRefs.last();
+
+    // Set the color and style based on the type of way
+    QString wayType = way.tags.value("highway", way.tags.value("building", way.tags.value("waterway", "")));
+    QColor color;
+
+    // Define semi-transparent colors for different types
+    if (wayType == "building") {
+        color = QColor(150, 75, 0, 150); // Brown with transparency for buildings
+    } else if (wayType == "river" || wayType == "waterway") {
+        color = QColor(0, 150, 255, 120); // Blue with transparency for rivers/waterways
+    } else if (wayType == "road" || way.tags.contains("highway")) {
+        color = QColor(128, 128, 128, 100); // Gray with transparency for roads
+    } else {
+        color = QColor(0, 0, 0, 50); // Default transparent black for other types
+    }
+
+    painter.setPen(QPen(color, 2/scaleFactor));  // Set pen width and color
+
+    // Draw the way as a polygon if it's closed, or a polyline if it's open
+    if (isClosed) {
+        // Closed polygon (e.g., buildings, closed areas)
+        painter.setBrush(isClosed ? QBrush(color, Qt::SolidPattern) : Qt::NoBrush);  // Fill if closed, no brush if open
+        QPolygonF polygon(points);
+        painter.drawPolygon(polygon);
+    } else {
+        // Open polyline (e.g., roads, paths)
+        for (int i = 0; i < points.size() - 1; ++i) {
+            painter.drawLine(points[i], points[i + 1]);  // Draw line between consecutive points
+        }
+    }
+
+    // Optionally, draw the type of the way near the first point
+    if (!wayType.isEmpty()) {
+        //painter.setPen(Qt::blue);
+        //painter.drawText(points.first() + QPointF(10, 10), wayType);
+    }
+}
 
 // Handle the wheel event for zooming
 void Widget::wheelEvent(QWheelEvent* event)  {
@@ -146,4 +242,14 @@ void Widget::mouseReleaseEvent(QMouseEvent* event)  {
     if (event->button() == Qt::LeftButton) {
         lastMousePos = QPoint(); // Reset the mouse position
     }
+}
+
+
+const OSMNode* Widget::findNodeById(const QString &id) const {
+    for (const OSMNode &node : nodes) {
+        if (node.id == id) {
+            return &node;
+        }
+    }
+    return nullptr;  // Return null if the node with the ID is not found
 }

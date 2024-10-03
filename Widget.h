@@ -13,6 +13,11 @@
 #include<cmath>
 #include <QMouseEvent>
 #include <QWheelEvent>
+#include <iostream>
+#include <QPushButton>
+#include "OSMWay.h"
+
+using namespace std;
 class OSMNode {
 public:
     QString id;
@@ -32,20 +37,32 @@ Q_OBJECT
 private:
     QList<OSMNode> nodes;  // Store parsed nodes from OSM file
     std::unordered_map<QString, QPointF> nodeMap;  // Store all the nodes extracted from the OSM file
-    std::vector<std::vector<QString>> ways;  // Store the paths/ways extracted from the OSM file
+    std::vector<OSMWay> ways;  // Store the paths/ways extracted from the OSM file
     double minLat, maxLat, minLon, maxLon;
     double scaleFactor =1.0 ;  // Scale factor for zooming
     QPoint lastMousePos;       // For tracking the last mouse position
     QPoint offset;             // Offset for panning
-    //QPixmap backgroundImage;
+
 
 public:
     Widget(const QString& fileName="map.osm",QWidget *parent = nullptr);
+    const OSMNode* findNodeById(const QString &id) const;
+    void displayWays()const{
+        cout<<"We have "<<ways.size()<<" ways"<<endl;
+
+            for (const OSMWay &way: ways) {
+               // cout<<...
+            }
+
+
+    }
 
 protected:
     void paintEvent(QPaintEvent *event) override;
 
 private:
+    //bool displayNames; // Track if names are displayed
+    //QPushButton *toggleNamesButton;  // Button for toggling name display
     // Step 1: Parse OSM file and extract nodes
     void parseOSMFile(const QString &fileName);
 
@@ -57,6 +74,7 @@ private:
 
     // Step 4: Draw node at specific coordinates
     void drawNode(QPainter &painter, const QPointF &point, const OSMNode &node);
+    void drawWay(QPainter &painter, const QVector<QPointF> &points, const OSMWay &way);
 
     void wheelEvent(QWheelEvent *event) override;
 
@@ -65,6 +83,8 @@ private:
     void mouseMoveEvent(QMouseEvent *event) override;
 
     void mouseReleaseEvent(QMouseEvent *event) override;
+private slots:
+   // void toggleDisplayNames(); // Slot for toggling name display
 };
 
 
